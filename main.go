@@ -32,18 +32,20 @@ const (
 )
 
 // LearnEmbedding learns the embeddings
-func LearnEmbedding(inputs [][]float64, size, width, iterations int) [][]float64 {
+func LearnEmbedding(inputs Matrix[float64], width, iterations int) [][]float64 {
 	const Eta = 1e-3
 	rng := rand.New(rand.NewSource(1))
 	others := tf64.NewSet()
-	others.Add("x", size, len(inputs))
+	others.Add("x", inputs.Cols, inputs.Rows)
 	x := others.ByName["x"]
-	for _, row := range inputs {
-		x.X = append(x.X, row...)
+	for row := range inputs.Rows {
+		for _, value := range inputs.Data[row*inputs.Cols : row*inputs.Cols+inputs.Cols] {
+			x.X = append(x.X, value*1e-3)
+		}
 	}
 
 	set := tf64.NewSet()
-	set.Add("i", width, len(inputs))
+	set.Add("i", width, inputs.Rows)
 
 	for ii := range set.Weights {
 		w := set.Weights[ii]
@@ -176,7 +178,7 @@ func LearnEmbedding(inputs [][]float64, size, width, iterations int) [][]float64
 		return cp[i].Cluster < cp[j].Cluster
 	})*/
 	I := set.ByName["i"]
-	outputs := make([][]float64, len(inputs))
+	outputs := make([][]float64, inputs.Rows)
 	for i := range outputs {
 		outputs[i] = I.X[i*width : (i+1)*width]
 	}
@@ -211,4 +213,6 @@ func main() {
 		}
 	}
 	fmt.Println(gadj.Data)
+	outputs := LearnEmbedding(gadj, 3, 256)
+	fmt.Println(outputs)
 }
