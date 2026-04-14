@@ -6,8 +6,12 @@ package main
 
 import (
 	"fmt"
+	"image"
+	"image/color"
+	"image/gif"
 	"math"
 	"math/rand"
+	"os"
 	"strings"
 
 	"github.com/pointlander/gradient/tf64"
@@ -217,6 +221,12 @@ func main() {
 	}
 	gadj := getadj()
 	fmt.Println(gadj.Data)
+	images := &gif.GIF{}
+	var palette = []color.Color{}
+	for i := range 256 {
+		g := byte(i)
+		palette = append(palette, color.RGBA{g, g, g, 0xff})
+	}
 	for range 33 {
 		outputs := LearnEmbedding(gadj, 3, 256)
 		for i := range outputs {
@@ -224,7 +234,41 @@ func main() {
 				g.Data[i*g.Cols+ii] += outputs[i][ii]
 			}
 		}
+		minX, maxX, minY, maxY := math.MaxFloat64, -math.MaxFloat64, math.MaxFloat64, -math.MaxFloat64
+		for i := range g.Rows {
+			x, y := g.Data[i*g.Cols], g.Data[i*g.Cols+1]
+			if x < minX {
+				minX = x
+			}
+			if x > maxX {
+				maxX = x
+			}
+			if y < minY {
+				minY = y
+			}
+			if y > maxY {
+				maxY = y
+			}
+		}
+		image := image.NewPaletted(image.Rect(0, 0, 512, 512), palette)
+		for i := range g.Rows {
+			xx, yy := g.Data[i*g.Cols], g.Data[i*g.Cols+1]
+			x := 500*(xx-minX)/(maxX-minX) + 6
+			y := 500*(yy-minY)/(maxY-minY) + 6
+			image.Set(int(x), int(y), color.RGBA{0xff, 0xff, 0xff, 0xff})
+		}
+		images.Image = append(images.Image, image)
+		images.Delay = append(images.Delay, 10)
 		gadj = getadj()
+	}
+	out, err := os.Create("verse.gif")
+	if err != nil {
+		panic(err)
+	}
+	defer out.Close()
+	err = gif.EncodeAll(out, images)
+	if err != nil {
+		panic(err)
 	}
 	fmt.Println(g.Data)
 }
