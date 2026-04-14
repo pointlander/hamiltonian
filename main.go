@@ -193,26 +193,38 @@ func main() {
 			g.Data = append(g.Data, rng.Float64())
 		}
 	}
-	gadj := NewMatrix[float64](g.Rows, g.Rows)
-	for i := range g.Rows {
-		for j := range g.Rows {
-			sum := 0.0
-			for k := range g.Cols {
-				diff := g.Data[i*g.Cols+k] - g.Data[j*g.Cols+k]
-				if diff < 0 {
-					diff = -diff
+	getadj := func() Matrix[float64] {
+		gadj := NewMatrix[float64](g.Rows, g.Rows)
+		for i := range g.Rows {
+			for j := range g.Rows {
+				sum := 0.0
+				for k := range g.Cols {
+					diff := g.Data[i*g.Cols+k] - g.Data[j*g.Cols+k]
+					if diff < 0 {
+						diff = -diff
+					}
+					sum += diff * diff
 				}
-				sum += diff * diff
+				distance := math.Sqrt(sum)
+				if distance == 0 {
+					gadj.Data = append(gadj.Data, 0)
+					continue
+				}
+				gadj.Data = append(gadj.Data, 1/distance)
 			}
-			distance := math.Sqrt(sum)
-			if distance == 0 {
-				gadj.Data = append(gadj.Data, 0)
-				continue
-			}
-			gadj.Data = append(gadj.Data, 1/distance)
 		}
+		return gadj
 	}
+	gadj := getadj()
 	fmt.Println(gadj.Data)
-	outputs := LearnEmbedding(gadj, 3, 256)
-	fmt.Println(outputs)
+	for range 33 {
+		outputs := LearnEmbedding(gadj, 3, 256)
+		for i := range outputs {
+			for ii := range outputs[i] {
+				g.Data[i*g.Cols+ii] += outputs[i][ii]
+			}
+		}
+		gadj = getadj()
+	}
+	fmt.Println(g.Data)
 }
