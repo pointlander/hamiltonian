@@ -227,7 +227,7 @@ func main() {
 		g := byte(i)
 		palette = append(palette, color.RGBA{g, g, g, 0xff})
 	}
-	for range 33 {
+	for range 256 {
 		outputs := LearnEmbedding(gadj, 3, 256)
 		for i := range outputs {
 			for ii := range outputs[i] {
