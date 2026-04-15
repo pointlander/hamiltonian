@@ -257,11 +257,13 @@ func main() {
 					select {
 					case vv := <-delay[i][ii]:
 						delay[i][ii] <- v
-						v = vv
+						g.Data[i*g.Cols+ii] += vv
 					default:
+						delay[i][ii] <- v
 					}
+				} else {
+					g.Data[i*g.Cols+ii] += v
 				}
-				g.Data[i*g.Cols+ii] += outputs[i][ii]
 			}
 		}
 		image := image.NewPaletted(image.Rect(0, 0, 1024, 1024), palette)
