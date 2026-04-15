@@ -227,35 +227,44 @@ func main() {
 		g := byte(i)
 		palette = append(palette, color.RGBA{g, g, g, 0xff})
 	}
-	for range 256 {
+	for range 1024 {
 		outputs := LearnEmbedding(gadj, 3, 256)
 		for i := range outputs {
 			for ii := range outputs[i] {
 				g.Data[i*g.Cols+ii] += outputs[i][ii]
 			}
 		}
-		minX, maxX, minY, maxY := math.MaxFloat64, -math.MaxFloat64, math.MaxFloat64, -math.MaxFloat64
-		for i := range g.Rows {
-			x, y := g.Data[i*g.Cols], g.Data[i*g.Cols+1]
-			if x < minX {
-				minX = x
-			}
-			if x > maxX {
-				maxX = x
-			}
-			if y < minY {
-				minY = y
-			}
-			if y > maxY {
-				maxY = y
-			}
+		image := image.NewPaletted(image.Rect(0, 0, 1024, 1024), palette)
+		type Offset struct {
+			X int
+			Y int
+			A int
+			B int
 		}
-		image := image.NewPaletted(image.Rect(0, 0, 512, 512), palette)
-		for i := range g.Rows {
-			xx, yy := g.Data[i*g.Cols], g.Data[i*g.Cols+1]
-			x := 500*(xx-minX)/(maxX-minX) + 6
-			y := 500*(yy-minY)/(maxY-minY) + 6
-			image.Set(int(x), int(y), color.RGBA{0xff, 0xff, 0xff, 0xff})
+		offsets := []Offset{{0, 0, 0, 1}, {512, 0, 0, 2}, {0, 512, 1, 2}}
+		for _, offset := range offsets {
+			minX, maxX, minY, maxY := math.MaxFloat64, -math.MaxFloat64, math.MaxFloat64, -math.MaxFloat64
+			for i := range g.Rows {
+				x, y := g.Data[i*g.Cols+offset.A], g.Data[i*g.Cols+offset.B]
+				if x < minX {
+					minX = x
+				}
+				if x > maxX {
+					maxX = x
+				}
+				if y < minY {
+					minY = y
+				}
+				if y > maxY {
+					maxY = y
+				}
+			}
+			for i := range g.Rows {
+				xx, yy := g.Data[i*g.Cols+offset.A], g.Data[i*g.Cols+offset.B]
+				x := 500*(xx-minX)/(maxX-minX) + 6
+				y := 500*(yy-minY)/(maxY-minY) + 6
+				image.Set(offset.X+int(x), offset.Y+int(y), color.RGBA{0xff, 0xff, 0xff, 0xff})
+			}
 		}
 		images.Image = append(images.Image, image)
 		images.Delay = append(images.Delay, 10)
