@@ -12,6 +12,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/pointlander/gradient/tf64"
@@ -227,10 +228,39 @@ func main() {
 		g := byte(i)
 		palette = append(palette, color.RGBA{g, g, g, 0xff})
 	}
+	delay := make([][]chan float64, g.Rows)
+	for i := range delay {
+		delay[i] = make([]chan float64, g.Cols)
+		for ii := range delay[i] {
+			delay[i][ii] = make(chan float64, 2)
+		}
+	}
 	for range 1024 {
 		outputs := LearnEmbedding(gadj, 3, 256)
 		for i := range outputs {
+			type R struct {
+				R float64
+				I int
+			}
+			r := make([]R, g.Rows)
+			for ii := range r {
+				r[ii].R = gadj.Data[i*gadj.Rows+ii]
+				r[ii].I = ii
+			}
+			sort.Slice(r, func(i, j int) bool {
+				return r[i].R < r[j].R
+			})
+			split := r[len(r)/2]
 			for ii := range outputs[i] {
+				v := outputs[i][ii]
+				if v > split.R {
+					select {
+					case vv := <-delay[i][ii]:
+						delay[i][ii] <- v
+						v = vv
+					default:
+					}
+				}
 				g.Data[i*g.Cols+ii] += outputs[i][ii]
 			}
 		}
