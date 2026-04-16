@@ -56,6 +56,9 @@ func Hadamard(k tf64.Continuation, node int, a, b *tf64.V, options ...map[string
 	return false
 }
 
+// U is the size of the universe
+const U = 1e26
+
 // LearnEmbedding learns the embeddings
 func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][]float64) {
 	const Eta = 1e-3
@@ -92,6 +95,7 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][
 			w.States[ii] = make([]float64, len(w.X))
 		}
 	}
+	//set.ByName["g"].X[0] = 1 / U
 
 	drop := .3
 	dropout := map[string]interface{}{
@@ -101,7 +105,7 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][
 
 	hadamard := tf64.B(Hadamard)
 	sa := tf64.T(tf64.Mul(tf64.Dropout(tf64.Square(set.Get("i")), dropout), tf64.T(hadamard(others.Get("x"), set.Get("g")))))
-	loss := tf64.Avg(tf64.Quadratic(others.Get("x"), sa))
+	loss := tf64.Avg(tf64.Quadratic(hadamard(others.Get("x"), set.Get("g")), sa))
 
 	for iteration := range iterations {
 		pow := func(x float64) float64 {
