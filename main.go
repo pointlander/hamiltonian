@@ -93,7 +93,7 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][
 		}
 		factor := math.Sqrt(2.0 / float64(w.S[0]))
 		for range cap(w.X) {
-			w.X = append(w.X, rng.NormFloat64()*factor*1e-4)
+			w.X = append(w.X, rng.NormFloat64()*factor*1e-2)
 		}
 		w.States = make([][]float64, StateTotal)
 		for ii := range w.States {
@@ -267,6 +267,7 @@ func main() {
 		}
 	}
 	gs := make(plotter.XYs, 0, 8)
+	var gshist plotter.Values
 	for epoch := range 1024 {
 		G, outputs := LearnEmbedding(gadj, 3, 256)
 		for i := range outputs {
@@ -335,6 +336,7 @@ func main() {
 		gadj = getadj()
 		fmt.Println("G", G)
 		gs = append(gs, plotter.XY{X: float64(epoch), Y: float64(G)})
+		gshist = append(gshist, float64(G))
 	}
 	out, err := os.Create("verse.gif")
 	if err != nil {
@@ -364,5 +366,32 @@ func main() {
 	err = p.Save(8*vg.Inch, 8*vg.Inch, "G.png")
 	if err != nil {
 		panic(err)
+	}
+
+	{
+		p := plot.New()
+		p.Title.Text = "G"
+
+		hist, err := plotter.NewHist(gshist, 256)
+		if err != nil {
+			panic(err)
+		}
+		max, index := 0.0, 0
+		for i, bin := range hist.Bins {
+			if bin.Weight > max {
+				max, index = bin.Weight, i
+			}
+		}
+		{
+			min, max := hist.Bins[index].Min, hist.Bins[index].Max
+			fmt.Println("min max", min, max)
+			fmt.Println("min^2 max^2", min*min, max*max)
+		}
+		p.Add(hist)
+
+		err = p.Save(8*vg.Inch, 8*vg.Inch, "Ghist.png")
+		if err != nil {
+			panic(err)
+		}
 	}
 }
