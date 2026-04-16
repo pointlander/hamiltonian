@@ -16,6 +16,11 @@ import (
 	"strings"
 
 	"github.com/pointlander/gradient/tf64"
+
+	"gonum.org/v1/plot"
+	"gonum.org/v1/plot/plotter"
+	"gonum.org/v1/plot/vg"
+	"gonum.org/v1/plot/vg/draw"
 )
 
 const (
@@ -261,7 +266,8 @@ func main() {
 			delay[i][ii] = make(chan float64, 2)
 		}
 	}
-	for range 1024 {
+	gs := make(plotter.XYs, 0, 8)
+	for epoch := range 1024 {
 		G, outputs := LearnEmbedding(gadj, 3, 256)
 		for i := range outputs {
 			type R struct {
@@ -328,6 +334,7 @@ func main() {
 		images.Delay = append(images.Delay, 10)
 		gadj = getadj()
 		fmt.Println("G", G)
+		gs = append(gs, plotter.XY{X: float64(epoch), Y: float64(G)})
 	}
 	out, err := os.Create("verse.gif")
 	if err != nil {
@@ -339,4 +346,23 @@ func main() {
 		panic(err)
 	}
 	fmt.Println(g.Data)
+
+	p := plot.New()
+
+	p.Title.Text = "G vs time"
+	p.X.Label.Text = "time"
+	p.Y.Label.Text = "G"
+
+	scatter, err := plotter.NewScatter(gs)
+	if err != nil {
+		panic(err)
+	}
+	scatter.GlyphStyle.Radius = vg.Length(1)
+	scatter.GlyphStyle.Shape = draw.CircleGlyph{}
+	p.Add(scatter)
+
+	err = p.Save(8*vg.Inch, 8*vg.Inch, "G.png")
+	if err != nil {
+		panic(err)
+	}
 }
