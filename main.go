@@ -93,7 +93,7 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][
 		}
 		factor := math.Sqrt(2.0 / float64(w.S[0]))
 		for range cap(w.X) {
-			w.X = append(w.X, rng.NormFloat64()*factor*.01)
+			w.X = append(w.X, rng.NormFloat64()*factor*1e-4)
 		}
 		w.States = make([][]float64, StateTotal)
 		for ii := range w.States {
