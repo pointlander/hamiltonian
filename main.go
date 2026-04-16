@@ -61,8 +61,12 @@ func Hadamard(k tf64.Continuation, node int, a, b *tf64.V, options ...map[string
 	return false
 }
 
-// U is the size of the universe
-const U = 1e26
+const (
+	// U is the size of the universe
+	U = 1e26
+	// V is the speed of light
+	V = 299792458
+)
 
 // LearnEmbedding learns the embeddings
 func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][]float64) {
@@ -386,6 +390,7 @@ func main() {
 			min, max := hist.Bins[index].Min, hist.Bins[index].Max
 			fmt.Println("min max", min, max)
 			fmt.Println("min^2 max^2", min*min, max*max)
+			fmt.Println("min/c max/c", min/V, max/V)
 		}
 		p.Add(hist)
 
