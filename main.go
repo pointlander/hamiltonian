@@ -36,8 +36,28 @@ const (
 	StateTotal
 )
 
+// Hadamard computes the hadamard product of two tensors
+func Hadamard(k tf64.Continuation, node int, a, b *tf64.V, options ...map[string]interface{}) bool {
+	if len(a.S) != 2 || len(b.S) != 2 {
+		panic("tensor needs to have two dimensions")
+	}
+	length := len(b.X)
+	c := tf64.NewV(a.S...)
+	for i, j := range a.X {
+		c.X = append(c.X, j*b.X[i%length])
+	}
+	if k(&c) {
+		return true
+	}
+	for i, j := range c.D {
+		a.D[i] += j * b.X[i%length]
+		b.D[i%length] += j * a.X[i]
+	}
+	return false
+}
+
 // LearnEmbedding learns the embeddings
-func LearnEmbedding(inputs Matrix[float64], width, iterations int) [][]float64 {
+func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][]float64) {
 	const Eta = 1e-3
 	rng := rand.New(rand.NewSource(1))
 	others := tf64.NewSet()
@@ -45,12 +65,13 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) [][]float64 {
 	x := others.ByName["x"]
 	for row := range inputs.Rows {
 		for _, value := range inputs.Data[row*inputs.Cols : row*inputs.Cols+inputs.Cols] {
-			x.X = append(x.X, value*1e-3)
+			x.X = append(x.X, value)
 		}
 	}
 
 	set := tf64.NewSet()
 	set.Add("i", width, inputs.Rows)
+	set.Add("g", 1, 1)
 
 	for ii := range set.Weights {
 		w := set.Weights[ii]
@@ -78,7 +99,8 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) [][]float64 {
 		"drop": &drop,
 	}
 
-	sa := tf64.T(tf64.Mul(tf64.Dropout(tf64.Square(set.Get("i")), dropout), tf64.T(others.Get("x"))))
+	hadamard := tf64.B(Hadamard)
+	sa := tf64.T(tf64.Mul(tf64.Dropout(tf64.Square(set.Get("i")), dropout), tf64.T(hadamard(others.Get("x"), set.Get("g")))))
 	loss := tf64.Avg(tf64.Quadratic(others.Get("x"), sa))
 
 	for iteration := range iterations {
@@ -95,7 +117,7 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) [][]float64 {
 		l := tf64.Gradient(loss).X[0]
 		if math.IsNaN(float64(l)) || math.IsInf(float64(l), 0) {
 			fmt.Println(iteration, l)
-			return nil
+			return 0.0, nil
 		}
 
 		norm := 0.0
@@ -187,7 +209,7 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) [][]float64 {
 	for i := range outputs {
 		outputs[i] = I.X[i*width : (i+1)*width]
 	}
-	return outputs
+	return set.ByName["g"].X[0], outputs
 }
 
 func main() {
@@ -236,7 +258,7 @@ func main() {
 		}
 	}
 	for range 1024 {
-		outputs := LearnEmbedding(gadj, 3, 256)
+		G, outputs := LearnEmbedding(gadj, 3, 256)
 		for i := range outputs {
 			type R struct {
 				R float64
@@ -301,6 +323,7 @@ func main() {
 		images.Image = append(images.Image, image)
 		images.Delay = append(images.Delay, 10)
 		gadj = getadj()
+		fmt.Println("G", G)
 	}
 	out, err := os.Create("verse.gif")
 	if err != nil {
