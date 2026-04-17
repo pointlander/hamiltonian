@@ -228,8 +228,8 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][
 func main() {
 	rng := rand.New(rand.NewSource(1))
 	g := NewMatrix[float64](3, 33)
-	for range 33 {
-		for range 3 {
+	for range g.Rows {
+		for range g.Cols {
 			g.Data = append(g.Data, rng.Float64())
 		}
 	}
@@ -397,6 +397,13 @@ func main() {
 		err = p.Save(8*vg.Inch, 8*vg.Inch, "Ghist.png")
 		if err != nil {
 			panic(err)
+		}
+
+		sort.Slice(hist.Bins, func(i, j int) bool {
+			return hist.Bins[i].Weight < hist.Bins[j].Weight
+		})
+		for i := range hist.Bins {
+			fmt.Println(hist.Bins[i])
 		}
 	}
 }
