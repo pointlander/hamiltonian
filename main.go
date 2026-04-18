@@ -69,7 +69,7 @@ const (
 )
 
 // LearnEmbedding learns the embeddings
-func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][]float64) {
+func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, float64, [][]float64) {
 	const Eta = 1e-3
 	rng := rand.New(rand.NewSource(1))
 	others := tf64.NewSet()
@@ -84,6 +84,7 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][
 	set := tf64.NewSet()
 	set.Add("i", width, inputs.Rows)
 	set.Add("g", 1, 1)
+	set.Add("l", 1, 1)
 
 	for ii := range set.Weights {
 		w := set.Weights[ii]
@@ -97,7 +98,7 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][
 		}
 		factor := math.Sqrt(2.0 / float64(w.S[0]))
 		for range cap(w.X) {
-			w.X = append(w.X, rng.NormFloat64()*factor*1e-2)
+			w.X = append(w.X, rng.NormFloat64()*factor)
 		}
 		w.States = make([][]float64, StateTotal)
 		for ii := range w.States {
@@ -113,9 +114,11 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][
 	}
 
 	hadamard := tf64.B(Hadamard)
-	sa := tf64.T(tf64.Mul(tf64.Dropout(tf64.Square(set.Get("i")), dropout), tf64.T(hadamard(others.Get("x"), set.Get("g")))))
+	c := tf64.Inv(hadamard(set.Get("l"), set.Get("g")))
+	sa := tf64.T(tf64.Mul(tf64.Dropout(tf64.Square(hadamard(set.Get("i"), c)), dropout), tf64.T(hadamard(others.Get("x"), set.Get("g")))))
 	loss := tf64.Avg(tf64.Quadratic(hadamard(others.Get("x"), set.Get("g")), sa))
 
+	var l float64
 	for iteration := range iterations {
 		pow := func(x float64) float64 {
 			y := math.Pow(x, float64(iteration+1))
@@ -127,10 +130,10 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][
 
 		set.Zero()
 		others.Zero()
-		l := tf64.Gradient(loss).X[0]
+		l = tf64.Gradient(loss).X[0]
 		if math.IsNaN(float64(l)) || math.IsInf(float64(l), 0) {
 			fmt.Println(iteration, l)
-			return 0.0, nil
+			return 0.0, 0.0, nil
 		}
 
 		norm := 0.0
@@ -166,8 +169,8 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][
 				}*/
 			}
 		}
-		fmt.Println(l)
 	}
+	fmt.Println(l)
 
 	/*meta := make([][]float64, len(cp))
 	for i := range meta {
@@ -222,7 +225,7 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, [][
 	for i := range outputs {
 		outputs[i] = I.X[i*width : (i+1)*width]
 	}
-	return set.ByName["g"].X[0], outputs
+	return set.ByName["l"].X[0], set.ByName["g"].X[0], outputs
 }
 
 func main() {
@@ -272,8 +275,9 @@ func main() {
 	}
 	gs := make(plotter.XYs, 0, 8)
 	var gshist plotter.Values
+	var chist plotter.Values
 	for epoch := range 1024 {
-		G, outputs := LearnEmbedding(gadj, 3, 256)
+		l, G, outputs := LearnEmbedding(gadj, 3, 512)
 		for i := range outputs {
 			type R struct {
 				R float64
@@ -287,10 +291,10 @@ func main() {
 			sort.Slice(r, func(i, j int) bool {
 				return r[i].R < r[j].R
 			})
-			split := r[len(r)/2]
+			//split := r[len(r)/2]
 			for ii := range outputs[i] {
 				v := outputs[i][ii]
-				if v > split.R {
+				/*if v > split.R {
 					select {
 					case vv := <-delay[i][ii]:
 						delay[i][ii] <- v
@@ -298,9 +302,9 @@ func main() {
 					default:
 						delay[i][ii] <- v
 					}
-				} else {
-					g.Data[i*g.Cols+ii] += v
-				}
+				} else {*/
+				g.Data[i*g.Cols+ii] += v
+				//}
 			}
 		}
 		image := image.NewPaletted(image.Rect(0, 0, 1024, 1024), palette)
@@ -338,9 +342,10 @@ func main() {
 		images.Image = append(images.Image, image)
 		images.Delay = append(images.Delay, 10)
 		gadj = getadj()
-		fmt.Println("G", G)
+		fmt.Println("c", l*G, "G", G)
 		gs = append(gs, plotter.XY{X: float64(epoch), Y: float64(G)})
 		gshist = append(gshist, float64(G))
+		chist = append(chist, float64(l), float64(G))
 	}
 	out, err := os.Create("verse.gif")
 	if err != nil {
@@ -409,6 +414,34 @@ func main() {
 		fmt.Println()
 		histogram := make(map[int]int)
 		for _, value := range gshist {
+			exp := int(math.Floor(math.Log10(math.Abs(value))))
+			count := histogram[exp]
+			count++
+			histogram[exp] = count
+		}
+		type Count struct {
+			Count int
+			Exp   int
+		}
+		counts := make([]Count, 0, len(histogram))
+		for key, value := range histogram {
+			counts = append(counts, Count{
+				Count: value,
+				Exp:   key,
+			})
+		}
+		sort.Slice(counts, func(i, j int) bool {
+			return counts[i].Count < counts[j].Count
+		})
+		for _, count := range counts {
+			fmt.Println(count.Exp, ":", count.Count)
+		}
+	}
+
+	{
+		fmt.Println()
+		histogram := make(map[int]int)
+		for _, value := range chist {
 			exp := int(math.Floor(math.Log10(math.Abs(value))))
 			count := histogram[exp]
 			count++
