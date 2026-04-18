@@ -63,9 +63,9 @@ func Hadamard(k tf64.Continuation, node int, a, b *tf64.V, options ...map[string
 
 const (
 	// U is the size of the universe
-	U = 1e26
+	U = 1.0e26
 	// V is the speed of light
-	V = 299792458
+	V = 299792458.0
 )
 
 // LearnEmbedding learns the embeddings
@@ -98,14 +98,15 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, flo
 		}
 		factor := math.Sqrt(2.0 / float64(w.S[0]))
 		for range cap(w.X) {
-			w.X = append(w.X, rng.NormFloat64()*factor)
+			w.X = append(w.X, rng.NormFloat64()*factor*100)
 		}
 		w.States = make([][]float64, StateTotal)
 		for ii := range w.States {
 			w.States[ii] = make([]float64, len(w.X))
 		}
 	}
-	//set.ByName["g"].X[0] = 1 / U
+	set.ByName["g"].X[0] = V / U
+	set.ByName["l"].X[0] = U
 
 	drop := .3
 	dropout := map[string]interface{}{
@@ -345,7 +346,7 @@ func main() {
 		fmt.Println("c", l*G, "G", G)
 		gs = append(gs, plotter.XY{X: float64(epoch), Y: float64(G)})
 		gshist = append(gshist, float64(G))
-		chist = append(chist, float64(l), float64(G))
+		chist = append(chist, float64(l)*float64(G))
 	}
 	out, err := os.Create("verse.gif")
 	if err != nil {
