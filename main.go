@@ -80,11 +80,13 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, flo
 			x.X = append(x.X, value)
 		}
 	}
+	others.Add("c", 1, 1)
+	others.ByName["c"].X = append(others.ByName["c"].X, V)
 
 	set := tf64.NewSet()
 	set.Add("i", width, inputs.Rows)
 	set.Add("g", 1, 1)
-	set.Add("l", 1, 1)
+	//set.Add("l", 1, 1)
 
 	for ii := range set.Weights {
 		w := set.Weights[ii]
@@ -105,8 +107,8 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, flo
 			w.States[ii] = make([]float64, len(w.X))
 		}
 	}
-	set.ByName["g"].X[0] = V / U
-	set.ByName["l"].X[0] = U
+	set.ByName["g"].X[0] = 1e-11
+	//set.ByName["l"].X[0] = U
 
 	drop := .3
 	dropout := map[string]interface{}{
@@ -115,7 +117,8 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, flo
 	}
 
 	hadamard := tf64.B(Hadamard)
-	c := tf64.Inv(hadamard(set.Get("l"), set.Get("g")))
+	//c := tf64.Inv(hadamard(set.Get("l"), set.Get("g")))
+	c := tf64.Inv(others.Get("c"))
 	sa := tf64.T(tf64.Mul(tf64.Dropout(tf64.Square(hadamard(set.Get("i"), c)), dropout), tf64.T(hadamard(others.Get("x"), set.Get("g")))))
 	loss := tf64.Avg(tf64.Quadratic(hadamard(others.Get("x"), set.Get("g")), sa))
 
@@ -226,7 +229,7 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, flo
 	for i := range outputs {
 		outputs[i] = I.X[i*width : (i+1)*width]
 	}
-	return set.ByName["l"].X[0], set.ByName["g"].X[0], outputs
+	return others.ByName["c"].X[0], set.ByName["g"].X[0], outputs
 }
 
 func main() {
@@ -343,10 +346,10 @@ func main() {
 		images.Image = append(images.Image, image)
 		images.Delay = append(images.Delay, 10)
 		gadj = getadj()
-		fmt.Println("c", l*G, "G", G)
+		fmt.Println("c", l, "G", G)
 		gs = append(gs, plotter.XY{X: float64(epoch), Y: float64(G)})
 		gshist = append(gshist, float64(G))
-		chist = append(chist, float64(l)*float64(G))
+		chist = append(chist, float64(l))
 	}
 	out, err := os.Create("verse.gif")
 	if err != nil {
