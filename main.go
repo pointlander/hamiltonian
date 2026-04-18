@@ -405,5 +405,31 @@ func main() {
 		for i := range hist.Bins {
 			fmt.Println(hist.Bins[i])
 		}
+
+		fmt.Println()
+		histogram := make(map[int]int)
+		for _, value := range gshist {
+			exp := int(math.Floor(math.Log10(math.Abs(value))))
+			count := histogram[exp]
+			count++
+			histogram[exp] = count
+		}
+		type Count struct {
+			Count int
+			Exp   int
+		}
+		counts := make([]Count, 0, len(histogram))
+		for key, value := range histogram {
+			counts = append(counts, Count{
+				Count: value,
+				Exp:   key,
+			})
+		}
+		sort.Slice(counts, func(i, j int) bool {
+			return counts[i].Count < counts[j].Count
+		})
+		for _, count := range counts {
+			fmt.Println(count.Exp, ":", count.Count)
+		}
 	}
 }
