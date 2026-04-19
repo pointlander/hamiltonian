@@ -101,14 +101,14 @@ func LearnEmbedding(g float64, inputs Matrix[float64], width, iterations int) (f
 		}
 		factor := math.Sqrt(2.0 / float64(w.S[0]))
 		for range cap(w.X) {
-			w.X = append(w.X, rng.NormFloat64()*factor*100)
+			w.X = append(w.X, rng.NormFloat64()*factor*.01)
 		}
 		w.States = make([][]float64, StateTotal)
 		for ii := range w.States {
 			w.States[ii] = make([]float64, len(w.X))
 		}
 	}
-	set.ByName["g"].X[0] = g //1e-11
+	//set.ByName["g"].X[0] = g //1e-11
 	//set.ByName["l"].X[0] = U
 
 	drop := .3
@@ -119,8 +119,8 @@ func LearnEmbedding(g float64, inputs Matrix[float64], width, iterations int) (f
 
 	hadamard := tf64.B(Hadamard)
 	//c := tf64.Inv(hadamard(set.Get("l"), set.Get("g")))
-	c := tf64.Inv(others.Get("c"))
-	sa := tf64.T(tf64.Mul(tf64.Dropout(tf64.Square(hadamard(set.Get("i"), c)), dropout), tf64.T(hadamard(others.Get("x"), set.Get("g")))))
+	//c := tf64.Inv(others.Get("c"))
+	sa := tf64.T(tf64.Mul(tf64.Dropout(tf64.Square( /*hadamard(*/ set.Get("i") /*, c)*/), dropout), tf64.T(hadamard(others.Get("x"), set.Get("g")))))
 	loss := tf64.Avg(tf64.Quadratic(hadamard(others.Get("x"), set.Get("g")), sa))
 
 	var l float64
