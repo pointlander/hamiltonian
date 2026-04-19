@@ -5,6 +5,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"image"
 	"image/color"
@@ -69,7 +70,7 @@ const (
 )
 
 // LearnEmbedding learns the embeddings
-func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, float64, [][]float64) {
+func LearnEmbedding(g float64, inputs Matrix[float64], width, iterations int) (float64, float64, [][]float64) {
 	const Eta = 1e-3
 	rng := rand.New(rand.NewSource(1))
 	others := tf64.NewSet()
@@ -107,7 +108,7 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, flo
 			w.States[ii] = make([]float64, len(w.X))
 		}
 	}
-	set.ByName["g"].X[0] = 1e-11
+	set.ByName["g"].X[0] = g //1e-11
 	//set.ByName["l"].X[0] = U
 
 	drop := .3
@@ -232,7 +233,13 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, flo
 	return others.ByName["c"].X[0], set.ByName["g"].X[0], outputs
 }
 
-func main() {
+var (
+	// FlagS s mode
+	FlagS = flag.Bool("s", false, "s mode")
+)
+
+// SMode s mode
+func SMode() {
 	rng := rand.New(rand.NewSource(1))
 	g := NewMatrix[float64](3, 33)
 	for range g.Rows {
@@ -280,8 +287,9 @@ func main() {
 	gs := make(plotter.XYs, 0, 8)
 	var gshist plotter.Values
 	var chist plotter.Values
+	gg := 1.0
 	for epoch := range 1024 {
-		l, G, outputs := LearnEmbedding(gadj, 3, 512)
+		l, G, outputs := LearnEmbedding(gg, gadj, 3, 512)
 		for i := range outputs {
 			type R struct {
 				R float64
@@ -350,6 +358,7 @@ func main() {
 		gs = append(gs, plotter.XY{X: float64(epoch), Y: float64(G)})
 		gshist = append(gshist, float64(G))
 		chist = append(chist, float64(l))
+		gg = G
 	}
 	out, err := os.Create("verse.gif")
 	if err != nil {
@@ -468,5 +477,14 @@ func main() {
 		for _, count := range counts {
 			fmt.Println(count.Exp, ":", count.Count)
 		}
+	}
+}
+
+func main() {
+	flag.Parse()
+
+	if *FlagS {
+		SMode()
+		return
 	}
 }
