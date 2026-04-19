@@ -120,7 +120,7 @@ func LearnEmbedding(g float64, inputs Matrix[float64], width, iterations int) (f
 	hadamard := tf64.B(Hadamard)
 	//c := tf64.Inv(hadamard(set.Get("l"), set.Get("g")))
 	//c := tf64.Inv(others.Get("c"))
-	sa := tf64.T(tf64.Mul(tf64.Dropout(tf64.Square( /*hadamard(*/ set.Get("i") /*, c)*/), dropout), tf64.T(hadamard(others.Get("x"), set.Get("g")))))
+	sa := tf64.Mul(tf64.Dropout(tf64.Square( /*hadamard(*/ set.Get("i") /*, c)*/), dropout), hadamard(others.Get("x"), set.Get("g")))
 	loss := tf64.Avg(tf64.Quadratic(hadamard(others.Get("x"), set.Get("g")), sa))
 
 	var l float64
