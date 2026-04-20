@@ -70,7 +70,7 @@ const (
 )
 
 // LearnEmbedding learns the embeddings
-func LearnEmbedding(g float64, inputs Matrix[float64], width, iterations int) (float64, float64, [][]float64) {
+func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, []float64, [][]float64) {
 	const Eta = 1e-3
 	rng := rand.New(rand.NewSource(1))
 	others := tf64.NewSet()
@@ -108,7 +108,7 @@ func LearnEmbedding(g float64, inputs Matrix[float64], width, iterations int) (f
 			w.States[ii] = make([]float64, len(w.X))
 		}
 	}
-	//set.ByName["g"].X[0] = g //1e-11
+	//set.ByName["g"].X[0] = 1e-11
 	//set.ByName["l"].X[0] = U
 
 	drop := .3
@@ -138,7 +138,7 @@ func LearnEmbedding(g float64, inputs Matrix[float64], width, iterations int) (f
 		l = tf64.Gradient(loss).X[0]
 		if math.IsNaN(float64(l)) || math.IsInf(float64(l), 0) {
 			fmt.Println(iteration, l)
-			return 0.0, 0.0, nil
+			return 0.0, nil, nil
 		}
 
 		norm := 0.0
@@ -230,11 +230,11 @@ func LearnEmbedding(g float64, inputs Matrix[float64], width, iterations int) (f
 	for i := range outputs {
 		outputs[i] = I.X[i*width : (i+1)*width]
 	}
-	return others.ByName["c"].X[0], set.ByName["g"].X[0], outputs
+	return others.ByName["c"].X[0], set.ByName["g"].X, outputs
 }
 
 // LearnG learns g
-func LearnG(g float64, inputs Matrix[float64], width, iterations int) (float64, float64, [][]float64) {
+func LearnG(inputs Matrix[float64], width, iterations int) (float64, []float64, [][]float64) {
 	const Eta = 1e-3
 	rng := rand.New(rand.NewSource(1))
 	others := tf64.NewSet()
@@ -250,7 +250,7 @@ func LearnG(g float64, inputs Matrix[float64], width, iterations int) (float64, 
 
 	set := tf64.NewSet()
 	set.Add("i", width, inputs.Rows)
-	set.Add("g", 1, 1)
+	set.Add("g", inputs.Cols, inputs.Rows)
 	//set.Add("l", 1, 1)
 
 	for ii := range set.Weights {
@@ -272,7 +272,7 @@ func LearnG(g float64, inputs Matrix[float64], width, iterations int) (float64, 
 			w.States[ii] = make([]float64, len(w.X))
 		}
 	}
-	set.ByName["g"].X[0] = 1e-11
+	//set.ByName["g"].X[0] = 1e-11
 	//set.ByName["l"].X[0] = U
 
 	drop := .3
@@ -285,7 +285,7 @@ func LearnG(g float64, inputs Matrix[float64], width, iterations int) (float64, 
 	//c := tf64.Inv(hadamard(set.Get("l"), set.Get("g")))
 	//c := tf64.Inv(others.Get("c"))
 	sa := tf64.Mul(tf64.Dropout(tf64.Square( /*hadamard(*/ set.Get("i") /*, c)*/), dropout), hadamard(others.Get("x"), set.Get("g")))
-	loss := tf64.Avg(tf64.Quadratic(tf64.Mul(tf64.Dropout(hadamard(others.Get("x"), set.Get("g")), dropout), tf64.Square( /*hadamard(*/ set.Get("i") /*, c)*/)), sa))
+	loss := tf64.Avg(tf64.Quadratic(tf64.Mul(hadamard(others.Get("x"), set.Get("g")), tf64.Dropout(tf64.Square( /*hadamard(*/ set.Get("i") /*, c)*/), dropout)), sa))
 
 	var l float64
 	for iteration := range iterations {
@@ -302,7 +302,7 @@ func LearnG(g float64, inputs Matrix[float64], width, iterations int) (float64, 
 		l = tf64.Gradient(loss).X[0]
 		if math.IsNaN(float64(l)) || math.IsInf(float64(l), 0) {
 			fmt.Println(iteration, l)
-			return 0.0, 0.0, nil
+			return 0.0, nil, nil
 		}
 
 		norm := 0.0
@@ -394,7 +394,7 @@ func LearnG(g float64, inputs Matrix[float64], width, iterations int) (float64, 
 	for i := range outputs {
 		outputs[i] = I.X[i*width : (i+1)*width]
 	}
-	return others.ByName["c"].X[0], set.ByName["g"].X[0], outputs
+	return others.ByName["c"].X[0], set.ByName["g"].X, outputs
 }
 
 var (
@@ -405,7 +405,7 @@ var (
 )
 
 // SMode s mode
-func SMode(epochs int, iterate func(g float64, inputs Matrix[float64], width, iterations int) (float64, float64, [][]float64)) {
+func SMode(epochs int, iterate func(inputs Matrix[float64], width, iterations int) (float64, []float64, [][]float64)) {
 	rng := rand.New(rand.NewSource(1))
 	g := NewMatrix[float64](3, 33)
 	for range g.Rows {
@@ -453,10 +453,9 @@ func SMode(epochs int, iterate func(g float64, inputs Matrix[float64], width, it
 	gs := make(plotter.XYs, 0, 8)
 	var gshist plotter.Values
 	var chist plotter.Values
-	gg := 1.0
 	for epoch := range epochs {
 		fmt.Println(epoch)
-		l, G, outputs := iterate(gg, gadj, 3, 512)
+		l, G, outputs := iterate(gadj, 3, 512)
 		for i := range outputs {
 			type R struct {
 				R float64
@@ -523,11 +522,18 @@ func SMode(epochs int, iterate func(g float64, inputs Matrix[float64], width, it
 			images.Delay = append(images.Delay, 10)
 		}
 		gadj = getadj()
-		fmt.Println("c", l, "G", G)
-		gs = append(gs, plotter.XY{X: float64(epoch), Y: float64(G)})
-		gshist = append(gshist, float64(G))
+		avg := 0.0
+		for _, value := range G {
+			avg += value
+		}
+		avg /= float64(len(G))
+		fmt.Println("c", l, "G", avg)
+		for _, G := range G {
+			gs = append(gs, plotter.XY{X: float64(epoch), Y: float64(G)})
+			gshist = append(gshist, float64(G))
+		}
 		chist = append(chist, float64(l))
-		gg = G
+		//gg = G
 	}
 	out, err := os.Create("verse.gif")
 	if err != nil {
