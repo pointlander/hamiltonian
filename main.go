@@ -233,13 +233,179 @@ func LearnEmbedding(g float64, inputs Matrix[float64], width, iterations int) (f
 	return others.ByName["c"].X[0], set.ByName["g"].X[0], outputs
 }
 
+// LearnG learns g
+func LearnG(g float64, inputs Matrix[float64], width, iterations int) (float64, float64, [][]float64) {
+	const Eta = 1e-3
+	rng := rand.New(rand.NewSource(1))
+	others := tf64.NewSet()
+	others.Add("x", inputs.Cols, inputs.Rows)
+	x := others.ByName["x"]
+	for row := range inputs.Rows {
+		for _, value := range inputs.Data[row*inputs.Cols : row*inputs.Cols+inputs.Cols] {
+			x.X = append(x.X, value)
+		}
+	}
+	others.Add("c", 1, 1)
+	others.ByName["c"].X = append(others.ByName["c"].X, V)
+
+	set := tf64.NewSet()
+	set.Add("i", width, inputs.Rows)
+	set.Add("g", 1, 1)
+	//set.Add("l", 1, 1)
+
+	for ii := range set.Weights {
+		w := set.Weights[ii]
+		if strings.HasPrefix(w.N, "b") {
+			w.X = w.X[:cap(w.X)]
+			w.States = make([][]float64, StateTotal)
+			for ii := range w.States {
+				w.States[ii] = make([]float64, len(w.X))
+			}
+			continue
+		}
+		factor := math.Sqrt(2.0 / float64(w.S[0]))
+		for range cap(w.X) {
+			w.X = append(w.X, rng.NormFloat64()*factor*.01)
+		}
+		w.States = make([][]float64, StateTotal)
+		for ii := range w.States {
+			w.States[ii] = make([]float64, len(w.X))
+		}
+	}
+	//set.ByName["g"].X[0] = g //1e-11
+	//set.ByName["l"].X[0] = U
+
+	drop := .3
+	dropout := map[string]interface{}{
+		"rng":  rng,
+		"drop": &drop,
+	}
+
+	hadamard := tf64.B(Hadamard)
+	//c := tf64.Inv(hadamard(set.Get("l"), set.Get("g")))
+	//c := tf64.Inv(others.Get("c"))
+	sa := tf64.Mul(tf64.Dropout(tf64.Square( /*hadamard(*/ set.Get("i") /*, c)*/), dropout), hadamard(others.Get("x"), set.Get("g")))
+	loss := tf64.Avg(tf64.Quadratic(tf64.Mul(tf64.Dropout(hadamard(others.Get("x"), set.Get("g")), dropout), tf64.Square( /*hadamard(*/ set.Get("i") /*, c)*/)), sa))
+
+	var l float64
+	for iteration := range iterations {
+		pow := func(x float64) float64 {
+			y := math.Pow(x, float64(iteration+1))
+			if math.IsNaN(y) || math.IsInf(y, 0) {
+				return 0
+			}
+			return y
+		}
+
+		set.Zero()
+		others.Zero()
+		l = tf64.Gradient(loss).X[0]
+		if math.IsNaN(float64(l)) || math.IsInf(float64(l), 0) {
+			fmt.Println(iteration, l)
+			return 0.0, 0.0, nil
+		}
+
+		norm := 0.0
+		for _, p := range set.Weights {
+			for _, d := range p.D {
+				norm += d * d
+			}
+		}
+		norm = math.Sqrt(norm)
+		b1, b2 := pow(B1), pow(B2)
+		scaling := 1.0
+		if norm > 1 {
+			scaling = 1 / norm
+		}
+		for _, w := range set.Weights {
+			for ii, d := range w.D {
+				g := d * scaling
+				m := B1*w.States[StateM][ii] + (1-B1)*g
+				v := B2*w.States[StateV][ii] + (1-B2)*g*g
+				w.States[StateM][ii] = m
+				w.States[StateV][ii] = v
+				mhat := m / (1 - b1)
+				vhat := v / (1 - b2)
+				if vhat < 0 {
+					vhat = 0
+				}
+				_ = mhat
+				w.X[ii] -= Eta * mhat / (math.Sqrt(vhat) + 1e-8)
+				/*if rng.Float64() > .01 {
+					w.X[ii] -= .05 * g
+				} else {
+					w.X[ii] += .05 * g
+				}*/
+			}
+		}
+	}
+	fmt.Println(l)
+
+	/*meta := make([][]float64, len(cp))
+	for i := range meta {
+		meta[i] = make([]float64, len(cp))
+	}
+	const k = 3
+
+	{
+		y := set.ByName["i"]
+		vectors := make([][]float64, len(cp))
+		for i := range vectors {
+			row := make([]float64, width)
+			for ii := range row {
+				row[ii] = y.X[i*width+ii]
+			}
+			vectors[i] = row
+		}
+		for i := 0; i < 33; i++ {
+			clusters, _, err := kmeans.Kmeans(int64(i+1), vectors, k, kmeans.SquaredEuclideanDistance, -1)
+			if err != nil {
+				panic(err)
+			}
+			for i := 0; i < len(meta); i++ {
+				target := clusters[i]
+				for j, v := range clusters {
+					if v == target {
+						meta[i][j]++
+					}
+				}
+			}
+		}
+	}
+	clusters, _, err := kmeans.Kmeans(1, meta, 3, kmeans.SquaredEuclideanDistance, -1)
+	if err != nil {
+		panic(err)
+	}
+	for i := range clusters {
+		cp[i].Cluster = clusters[i]
+	}
+	for _, value := range x.X[len(iris)*size:] {
+		cp[len(iris)].Measures = append(cp[len(iris)].Measures, value)
+	}
+	I := set.ByName["i"]
+	for i := range cp {
+		cp[i].Embedding = I.X[i*width : (i+1)*width]
+	}
+	sort.Slice(cp, func(i, j int) bool {
+		return cp[i].Cluster < cp[j].Cluster
+	})*/
+	I := set.ByName["i"]
+	outputs := make([][]float64, inputs.Rows)
+	for i := range outputs {
+		outputs[i] = I.X[i*width : (i+1)*width]
+	}
+	return others.ByName["c"].X[0], set.ByName["g"].X[0], outputs
+}
+
 var (
 	// FlagS s mode
 	FlagS = flag.Bool("s", false, "s mode")
+	// FlagEpochs number of epochs
+	FlagEpochs = flag.Int("e", 1, "number of epochs")
 )
 
 // SMode s mode
-func SMode() {
+func SMode(epochs int, iterate func(g float64, inputs Matrix[float64], width, iterations int) (float64, float64, [][]float64)) {
 	rng := rand.New(rand.NewSource(1))
 	g := NewMatrix[float64](3, 33)
 	for range g.Rows {
@@ -288,8 +454,9 @@ func SMode() {
 	var gshist plotter.Values
 	var chist plotter.Values
 	gg := 1.0
-	for epoch := range 1024 {
-		l, G, outputs := LearnEmbedding(gg, gadj, 3, 512)
+	for epoch := range epochs {
+		fmt.Println(epoch)
+		l, G, outputs := iterate(gg, gadj, 3, 512)
 		for i := range outputs {
 			type R struct {
 				R float64
@@ -319,40 +486,42 @@ func SMode() {
 				//}
 			}
 		}
-		image := image.NewPaletted(image.Rect(0, 0, 1024, 1024), palette)
-		type Offset struct {
-			X int
-			Y int
-			A int
-			B int
-		}
-		offsets := []Offset{{0, 0, 0, 1}, {512, 0, 0, 2}, {0, 512, 1, 2}}
-		for _, offset := range offsets {
-			minX, maxX, minY, maxY := math.MaxFloat64, -math.MaxFloat64, math.MaxFloat64, -math.MaxFloat64
-			for i := range g.Rows {
-				x, y := g.Data[i*g.Cols+offset.A], g.Data[i*g.Cols+offset.B]
-				if x < minX {
-					minX = x
+		if epoch < 1024 {
+			image := image.NewPaletted(image.Rect(0, 0, 1024, 1024), palette)
+			type Offset struct {
+				X int
+				Y int
+				A int
+				B int
+			}
+			offsets := []Offset{{0, 0, 0, 1}, {512, 0, 0, 2}, {0, 512, 1, 2}}
+			for _, offset := range offsets {
+				minX, maxX, minY, maxY := math.MaxFloat64, -math.MaxFloat64, math.MaxFloat64, -math.MaxFloat64
+				for i := range g.Rows {
+					x, y := g.Data[i*g.Cols+offset.A], g.Data[i*g.Cols+offset.B]
+					if x < minX {
+						minX = x
+					}
+					if x > maxX {
+						maxX = x
+					}
+					if y < minY {
+						minY = y
+					}
+					if y > maxY {
+						maxY = y
+					}
 				}
-				if x > maxX {
-					maxX = x
-				}
-				if y < minY {
-					minY = y
-				}
-				if y > maxY {
-					maxY = y
+				for i := range g.Rows {
+					xx, yy := g.Data[i*g.Cols+offset.A], g.Data[i*g.Cols+offset.B]
+					x := 500*(xx-minX)/(maxX-minX) + 6
+					y := 500*(yy-minY)/(maxY-minY) + 6
+					image.Set(offset.X+int(x), offset.Y+int(y), color.RGBA{0xff, 0xff, 0xff, 0xff})
 				}
 			}
-			for i := range g.Rows {
-				xx, yy := g.Data[i*g.Cols+offset.A], g.Data[i*g.Cols+offset.B]
-				x := 500*(xx-minX)/(maxX-minX) + 6
-				y := 500*(yy-minY)/(maxY-minY) + 6
-				image.Set(offset.X+int(x), offset.Y+int(y), color.RGBA{0xff, 0xff, 0xff, 0xff})
-			}
+			images.Image = append(images.Image, image)
+			images.Delay = append(images.Delay, 10)
 		}
-		images.Image = append(images.Image, image)
-		images.Delay = append(images.Delay, 10)
 		gadj = getadj()
 		fmt.Println("c", l, "G", G)
 		gs = append(gs, plotter.XY{X: float64(epoch), Y: float64(G)})
@@ -484,7 +653,9 @@ func main() {
 	flag.Parse()
 
 	if *FlagS {
-		SMode()
+		SMode(*FlagEpochs*1024, LearnEmbedding)
 		return
 	}
+
+	SMode(*FlagEpochs*1024, LearnG)
 }
