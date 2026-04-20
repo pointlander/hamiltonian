@@ -272,7 +272,7 @@ func LearnG(g float64, inputs Matrix[float64], width, iterations int) (float64, 
 			w.States[ii] = make([]float64, len(w.X))
 		}
 	}
-	//set.ByName["g"].X[0] = g //1e-11
+	set.ByName["g"].X[0] = 1e-11
 	//set.ByName["l"].X[0] = U
 
 	drop := .3
