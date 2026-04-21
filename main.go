@@ -272,7 +272,9 @@ func LearnG(inputs Matrix[float64], width, iterations int) (float64, []float64, 
 			w.States[ii] = make([]float64, len(w.X))
 		}
 	}
-	//set.ByName["g"].X[0] = 1e-11
+	for i := range set.ByName["g"].X {
+		set.ByName["g"].X[i] = 1e-11
+	}
 	//set.ByName["l"].X[0] = U
 
 	drop := .3
@@ -451,6 +453,7 @@ func SMode(epochs int, iterate func(inputs Matrix[float64], width, iterations in
 		}
 	}
 	gs := make(plotter.XYs, 0, 8)
+	gavg := make(plotter.XYs, 0, 8)
 	var gshist plotter.Values
 	var chist plotter.Values
 	for epoch := range epochs {
@@ -535,6 +538,7 @@ func SMode(epochs int, iterate func(inputs Matrix[float64], width, iterations in
 		stddev /= float64(len(G))
 		stddev = math.Sqrt(stddev)
 		fmt.Println("c", l, "G", avg, stddev)
+		gavg = append(gavg, plotter.XY{X: float64(epoch), Y: float64(avg)})
 		for _, G := range G {
 			gs = append(gs, plotter.XY{X: float64(epoch), Y: float64(G)})
 			gshist = append(gshist, float64(G))
@@ -570,6 +574,27 @@ func SMode(epochs int, iterate func(inputs Matrix[float64], width, iterations in
 	err = p.Save(8*vg.Inch, 8*vg.Inch, "G.png")
 	if err != nil {
 		panic(err)
+	}
+
+	{
+		p := plot.New()
+
+		p.Title.Text = "G vs time"
+		p.X.Label.Text = "time"
+		p.Y.Label.Text = "G"
+
+		scatter, err := plotter.NewScatter(gavg)
+		if err != nil {
+			panic(err)
+		}
+		scatter.GlyphStyle.Radius = vg.Length(1)
+		scatter.GlyphStyle.Shape = draw.CircleGlyph{}
+		p.Add(scatter)
+
+		err = p.Save(8*vg.Inch, 8*vg.Inch, "Gavg.png")
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	{
