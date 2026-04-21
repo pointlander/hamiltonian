@@ -399,6 +399,186 @@ func LearnG(inputs Matrix[float64], width, iterations int) (float64, []float64, 
 	return others.ByName["c"].X[0], set.ByName["g"].X, outputs
 }
 
+// G is a g model
+type G struct {
+	Iteration int
+	Rng       *rand.Rand
+	Set       *tf64.Set
+}
+
+// NewG creates a new g model
+func NewG(rows, cols, width int) G {
+	rng := rand.New(rand.NewSource(1))
+
+	set := tf64.NewSet()
+	set.Add("i", width, rows)
+	set.Add("g", cols, rows)
+	//set.Add("l", 1, 1)
+
+	for ii := range set.Weights {
+		w := set.Weights[ii]
+		if strings.HasPrefix(w.N, "b") {
+			w.X = w.X[:cap(w.X)]
+			w.States = make([][]float64, StateTotal)
+			for ii := range w.States {
+				w.States[ii] = make([]float64, len(w.X))
+			}
+			continue
+		}
+		factor := math.Sqrt(2.0 / float64(w.S[0]))
+		for range cap(w.X) {
+			w.X = append(w.X, rng.NormFloat64()*factor*.01)
+		}
+		w.States = make([][]float64, StateTotal)
+		for ii := range w.States {
+			w.States[ii] = make([]float64, len(w.X))
+		}
+	}
+	for i := range set.ByName["g"].X {
+		set.ByName["g"].X[i] = 1e-11
+	}
+	//set.ByName["l"].X[0] = U
+	return G{
+		Rng: rng,
+		Set: &set,
+	}
+}
+
+// Iterate iterates the g model
+func (g *G) Iterate(inputs Matrix[float64], width, iterations int) (float64, []float64, [][]float64) {
+	others := tf64.NewSet()
+	others.Add("x", inputs.Cols, inputs.Rows)
+	x := others.ByName["x"]
+	for row := range inputs.Rows {
+		for _, value := range inputs.Data[row*inputs.Cols : row*inputs.Cols+inputs.Cols] {
+			x.X = append(x.X, value)
+		}
+	}
+	others.Add("c", 1, 1)
+	others.ByName["c"].X = append(others.ByName["c"].X, V)
+
+	drop := .3
+	dropout := map[string]interface{}{
+		"rng":  g.Rng,
+		"drop": &drop,
+	}
+
+	hadamard := tf64.B(Hadamard)
+	//c := tf64.Inv(hadamard(set.Get("l"), set.Get("g")))
+	//c := tf64.Inv(others.Get("c"))
+	sa := tf64.Mul(tf64.Dropout(tf64.Square( /*hadamard(*/ g.Set.Get("i") /*, c)*/), dropout), hadamard(others.Get("x"), g.Set.Get("g")))
+	loss := tf64.Avg(tf64.Quadratic(tf64.Mul(hadamard(others.Get("x"), g.Set.Get("g")), tf64.Dropout(tf64.Square( /*hadamard(*/ g.Set.Get("i") /*, c)*/), dropout)), sa))
+
+	var l float64
+	iteration := g.Iteration
+	pow := func(x float64) float64 {
+		y := math.Pow(x, float64(iteration+1))
+		if math.IsNaN(y) || math.IsInf(y, 0) {
+			return 0
+		}
+		return y
+	}
+
+	g.Set.Zero()
+	others.Zero()
+	l = tf64.Gradient(loss).X[0]
+	if math.IsNaN(float64(l)) || math.IsInf(float64(l), 0) {
+		fmt.Println(iteration, l)
+		return 0.0, nil, nil
+	}
+
+	norm := 0.0
+	for _, p := range g.Set.Weights {
+		for _, d := range p.D {
+			norm += d * d
+		}
+	}
+	norm = math.Sqrt(norm)
+	b1, b2 := pow(B1), pow(B2)
+	scaling := 1.0
+	if norm > 1 {
+		scaling = 1 / norm
+	}
+	for _, w := range g.Set.Weights {
+		for ii, d := range w.D {
+			g := d * scaling
+			m := B1*w.States[StateM][ii] + (1-B1)*g
+			v := B2*w.States[StateV][ii] + (1-B2)*g*g
+			w.States[StateM][ii] = m
+			w.States[StateV][ii] = v
+			mhat := m / (1 - b1)
+			vhat := v / (1 - b2)
+			if vhat < 0 {
+				vhat = 0
+			}
+			_ = mhat
+			w.X[ii] -= Eta * mhat / (math.Sqrt(vhat) + 1e-8)
+			/*if rng.Float64() > .01 {
+				w.X[ii] -= .05 * g
+			} else {
+				w.X[ii] += .05 * g
+			}*/
+		}
+	}
+	g.Iteration++
+	fmt.Println(l)
+
+	/*meta := make([][]float64, len(cp))
+	for i := range meta {
+		meta[i] = make([]float64, len(cp))
+	}
+	const k = 3
+
+	{
+		y := set.ByName["i"]
+		vectors := make([][]float64, len(cp))
+		for i := range vectors {
+			row := make([]float64, width)
+			for ii := range row {
+				row[ii] = y.X[i*width+ii]
+			}
+			vectors[i] = row
+		}
+		for i := 0; i < 33; i++ {
+			clusters, _, err := kmeans.Kmeans(int64(i+1), vectors, k, kmeans.SquaredEuclideanDistance, -1)
+			if err != nil {
+				panic(err)
+			}
+			for i := 0; i < len(meta); i++ {
+				target := clusters[i]
+				for j, v := range clusters {
+					if v == target {
+						meta[i][j]++
+					}
+				}
+			}
+		}
+	}
+	clusters, _, err := kmeans.Kmeans(1, meta, 3, kmeans.SquaredEuclideanDistance, -1)
+	if err != nil {
+		panic(err)
+	}
+	for i := range clusters {
+		cp[i].Cluster = clusters[i]
+	}
+	for _, value := range x.X[len(iris)*size:] {
+		cp[len(iris)].Measures = append(cp[len(iris)].Measures, value)
+	}
+	I := set.ByName["i"]
+	for i := range cp {
+		cp[i].Embedding = I.X[i*width : (i+1)*width]
+	}
+	sort.Slice(cp, func(i, j int) bool {
+		return cp[i].Cluster < cp[j].Cluster
+	})*/
+	I := g.Set.ByName["i"]
+	outputs := make([][]float64, inputs.Rows)
+	for i := range outputs {
+		outputs[i] = I.X[i*width : (i+1)*width]
+	}
+	return others.ByName["c"].X[0], g.Set.ByName["g"].X, outputs
+}
+
 var (
 	// FlagS s mode
 	FlagS = flag.Bool("s", false, "s mode")
@@ -695,5 +875,6 @@ func main() {
 		return
 	}
 
-	SMode(*FlagEpochs*1024, LearnG)
+	g := NewG(33, 33, 3)
+	SMode(*FlagEpochs*1024, g.Iterate)
 }
