@@ -527,7 +527,14 @@ func SMode(epochs int, iterate func(inputs Matrix[float64], width, iterations in
 			avg += value
 		}
 		avg /= float64(len(G))
-		fmt.Println("c", l, "G", avg)
+		stddev := 0.0
+		for _, value := range G {
+			diff := value - avg
+			stddev = diff * diff
+		}
+		stddev /= float64(len(G))
+		stddev = math.Sqrt(stddev)
+		fmt.Println("c", l, "G", avg, stddev)
 		for _, G := range G {
 			gs = append(gs, plotter.XY{X: float64(epoch), Y: float64(G)})
 			gshist = append(gshist, float64(G))
