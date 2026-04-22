@@ -405,12 +405,18 @@ func LearnG(inputs Matrix[float64], width, iterations int) (float64, []float64, 
 type G struct {
 	Iteration int
 	Rng       *rand.Rand
+	Others    *tf64.Set
 	Set       *tf64.Set
 }
 
 // NewG creates a new g model
 func NewG(rows, cols, width int) G {
 	rng := rand.New(rand.NewSource(1))
+
+	others := tf64.NewSet()
+	others.Add("x", cols, rows)
+	x := others.ByName["x"]
+	x.X = x.X[:cap(x.X)]
 
 	set := tf64.NewSet()
 	set.Add("i", width, rows)
@@ -441,23 +447,21 @@ func NewG(rows, cols, width int) G {
 	}
 	//set.ByName["l"].X[0] = U
 	return G{
-		Rng: rng,
-		Set: &set,
+		Rng:    rng,
+		Others: &others,
+		Set:    &set,
 	}
 }
 
 // Iterate iterates the g model
 func (g *G) Iterate(inputs Matrix[float64], width, iterations int) (float64, []float64, [][]float64) {
-	others := tf64.NewSet()
-	others.Add("x", inputs.Cols, inputs.Rows)
-	x := others.ByName["x"]
+	x, index := g.Others.ByName["x"], 0
 	for row := range inputs.Rows {
 		for _, value := range inputs.Data[row*inputs.Cols : row*inputs.Cols+inputs.Cols] {
-			x.X = append(x.X, value)
+			x.X[index] = value
+			index++
 		}
 	}
-	others.Add("c", 1, 1)
-	others.ByName["c"].X = append(others.ByName["c"].X, V)
 
 	drop := .3
 	dropout := map[string]interface{}{
@@ -468,8 +472,8 @@ func (g *G) Iterate(inputs Matrix[float64], width, iterations int) (float64, []f
 	hadamard := tf64.B(Hadamard)
 	//c := tf64.Inv(hadamard(set.Get("l"), set.Get("g")))
 	//c := tf64.Inv(others.Get("c"))
-	sa := tf64.Mul(tf64.Dropout(tf64.Square( /*hadamard(*/ g.Set.Get("i") /*, c)*/), dropout), hadamard(others.Get("x"), g.Set.Get("g")))
-	loss := tf64.Avg(tf64.Quadratic(tf64.Mul(hadamard(others.Get("x"), g.Set.Get("g")), tf64.Dropout(tf64.Square( /*hadamard(*/ g.Set.Get("i") /*, c)*/), dropout)), sa))
+	sa := tf64.Mul(tf64.Dropout(tf64.Square( /*hadamard(*/ g.Set.Get("i") /*, c)*/), dropout), hadamard(g.Others.Get("x"), g.Set.Get("g")))
+	loss := tf64.Avg(tf64.Quadratic(tf64.Mul(hadamard(g.Others.Get("x"), g.Set.Get("g")), tf64.Dropout(tf64.Square( /*hadamard(*/ g.Set.Get("i") /*, c)*/), dropout)), sa))
 
 	var l float64
 	iteration := g.Iteration
@@ -482,7 +486,7 @@ func (g *G) Iterate(inputs Matrix[float64], width, iterations int) (float64, []f
 	}
 
 	g.Set.Zero()
-	others.Zero()
+	g.Others.Zero()
 	l = tf64.Gradient(loss).X[0]
 	if math.IsNaN(float64(l)) || math.IsInf(float64(l), 0) {
 		fmt.Println(iteration, l)
@@ -578,7 +582,7 @@ func (g *G) Iterate(inputs Matrix[float64], width, iterations int) (float64, []f
 	for i := range outputs {
 		outputs[i] = I.X[i*width : (i+1)*width]
 	}
-	return others.ByName["c"].X[0], g.Set.ByName["g"].X, outputs
+	return V, g.Set.ByName["g"].X, outputs
 }
 
 var (
@@ -728,34 +732,40 @@ func SMode(epochs int, iterate func(inputs Matrix[float64], width, iterations in
 		chist = append(chist, float64(l))
 		//gg = G
 	}
-	out, err := os.Create("verse.gif")
-	if err != nil {
-		panic(err)
+
+	{
+		out, err := os.Create("verse.gif")
+		if err != nil {
+			panic(err)
+		}
+		defer out.Close()
+		err = gif.EncodeAll(out, images)
+		if err != nil {
+			panic(err)
+		}
 	}
-	defer out.Close()
-	err = gif.EncodeAll(out, images)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(g.Data)
 
-	p := plot.New()
+	{
+		fmt.Println(g.Data)
 
-	p.Title.Text = "G vs time"
-	p.X.Label.Text = "time"
-	p.Y.Label.Text = "G"
+		p := plot.New()
 
-	scatter, err := plotter.NewScatter(gs)
-	if err != nil {
-		panic(err)
-	}
-	scatter.GlyphStyle.Radius = vg.Length(1)
-	scatter.GlyphStyle.Shape = draw.CircleGlyph{}
-	p.Add(scatter)
+		p.Title.Text = "G vs time"
+		p.X.Label.Text = "time"
+		p.Y.Label.Text = "G"
 
-	err = p.Save(8*vg.Inch, 8*vg.Inch, "G.png")
-	if err != nil {
-		panic(err)
+		scatter, err := plotter.NewScatter(gs)
+		if err != nil {
+			panic(err)
+		}
+		scatter.GlyphStyle.Radius = vg.Length(1)
+		scatter.GlyphStyle.Shape = draw.CircleGlyph{}
+		p.Add(scatter)
+
+		err = p.Save(8*vg.Inch, 8*vg.Inch, "G.png")
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	{
