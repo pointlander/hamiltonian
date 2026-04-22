@@ -13,6 +13,8 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"runtime"
+	"runtime/pprof"
 	"sort"
 	"strings"
 
@@ -435,7 +437,7 @@ func NewG(rows, cols, width int) G {
 		}
 	}
 	for i := range set.ByName["g"].X {
-		set.ByName["g"].X[i] = 1e-11
+		set.ByName["g"].X[i] = 1e-5
 	}
 	//set.ByName["l"].X[0] = U
 	return G{
@@ -652,10 +654,10 @@ func SMode(epochs int, iterate func(inputs Matrix[float64], width, iterations in
 			sort.Slice(r, func(i, j int) bool {
 				return r[i].R < r[j].R
 			})
-			//split := r[len(r)/2]
+			split := r[len(r)/2]
 			for ii := range outputs[i] {
 				v := outputs[i][ii]
-				/*if v > split.R {
+				if v > split.R {
 					select {
 					case vv := <-delay[i][ii]:
 						delay[i][ii] <- v
@@ -663,9 +665,9 @@ func SMode(epochs int, iterate func(inputs Matrix[float64], width, iterations in
 					default:
 						delay[i][ii] <- v
 					}
-				} else {*/
-				g.Data[i*g.Cols+ii] += v
-				//}
+				} else {
+					g.Data[i*g.Cols+ii] += v
+				}
 			}
 		}
 		if epoch < 1024 {
@@ -778,7 +780,7 @@ func SMode(epochs int, iterate func(inputs Matrix[float64], width, iterations in
 	}
 
 	{
-		p := plot.New()
+		/*p := plot.New()
 		p.Title.Text = "G"
 
 		hist, err := plotter.NewHist(gshist, 256)
@@ -809,7 +811,7 @@ func SMode(epochs int, iterate func(inputs Matrix[float64], width, iterations in
 		})
 		for i := range hist.Bins {
 			fmt.Println(hist.Bins[i])
-		}
+		}*/
 
 		fmt.Println()
 		histogram := make(map[int]int)
@@ -868,6 +870,9 @@ func SMode(epochs int, iterate func(inputs Matrix[float64], width, iterations in
 }
 
 func main() {
+	f, _ := os.Create("mem.prof")
+	defer f.Close()
+
 	flag.Parse()
 
 	if *FlagS {
@@ -877,4 +882,7 @@ func main() {
 
 	g := NewG(33, 33, 3)
 	SMode(*FlagEpochs*1024, g.Iterate)
+
+	runtime.GC()
+	pprof.WriteHeapProfile(f)
 }
