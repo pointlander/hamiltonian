@@ -46,7 +46,7 @@ const (
 
 const (
 	// Width is the embedding width
-	Width = 3
+	Width = 4
 )
 
 // Hadamard computes the hadamard product of two tensors
@@ -600,7 +600,7 @@ var (
 // SMode s mode
 func SMode(epochs int, iterate func(inputs Matrix[float64], iterations int) (float64, []float64, [][]float64)) {
 	rng := rand.New(rand.NewSource(1))
-	g := NewMatrix[float64](Width, 33)
+	g := NewMatrix[float64](Width-1, 33)
 	for range g.Rows {
 		for range g.Cols {
 			g.Data = append(g.Data, rng.Float64())
@@ -663,10 +663,10 @@ func SMode(epochs int, iterate func(inputs Matrix[float64], iterations int) (flo
 			sort.Slice(r, func(i, j int) bool {
 				return r[i].R < r[j].R
 			})
-			split := r[len(r)/2]
-			for ii := range outputs[i] {
+			//split := r[len(r)/2]
+			for ii := range outputs[i][:3] {
 				v := outputs[i][ii]
-				if v > split.R {
+				/*if v > split.R {
 					select {
 					case vv := <-delay[i][ii]:
 						delay[i][ii] <- v
@@ -674,9 +674,9 @@ func SMode(epochs int, iterate func(inputs Matrix[float64], iterations int) (flo
 					default:
 						delay[i][ii] <- v
 					}
-				} else {
-					g.Data[i*g.Cols+ii] += v
-				}
+				} else {*/
+				g.Data[i*g.Cols+ii] += v * outputs[i][3]
+				//}
 			}
 		}
 		if epoch < 1024 {
