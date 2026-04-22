@@ -44,6 +44,11 @@ const (
 	StateTotal
 )
 
+const (
+	// Width is the embedding width
+	Width = 3
+)
+
 // Hadamard computes the hadamard product of two tensors
 func Hadamard(k tf64.Continuation, node int, a, b *tf64.V, options ...map[string]interface{}) bool {
 	if len(a.S) != 2 || len(b.S) != 2 {
@@ -72,7 +77,7 @@ const (
 )
 
 // LearnEmbedding learns the embeddings
-func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, []float64, [][]float64) {
+func LearnEmbedding(inputs Matrix[float64], iterations int) (float64, []float64, [][]float64) {
 	const Eta = 1e-3
 	rng := rand.New(rand.NewSource(1))
 	others := tf64.NewSet()
@@ -87,7 +92,7 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, []f
 	others.ByName["c"].X = append(others.ByName["c"].X, V)
 
 	set := tf64.NewSet()
-	set.Add("i", width, inputs.Rows)
+	set.Add("i", Width, inputs.Rows)
 	set.Add("g", 1, 1)
 	//set.Add("l", 1, 1)
 
@@ -189,9 +194,9 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, []f
 		y := set.ByName["i"]
 		vectors := make([][]float64, len(cp))
 		for i := range vectors {
-			row := make([]float64, width)
+			row := make([]float64, Width)
 			for ii := range row {
-				row[ii] = y.X[i*width+ii]
+				row[ii] = y.X[i*Width+ii]
 			}
 			vectors[i] = row
 		}
@@ -222,7 +227,7 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, []f
 	}
 	I := set.ByName["i"]
 	for i := range cp {
-		cp[i].Embedding = I.X[i*width : (i+1)*width]
+		cp[i].Embedding = I.X[i*Width : (i+1)*Width]
 	}
 	sort.Slice(cp, func(i, j int) bool {
 		return cp[i].Cluster < cp[j].Cluster
@@ -230,13 +235,13 @@ func LearnEmbedding(inputs Matrix[float64], width, iterations int) (float64, []f
 	I := set.ByName["i"]
 	outputs := make([][]float64, inputs.Rows)
 	for i := range outputs {
-		outputs[i] = I.X[i*width : (i+1)*width]
+		outputs[i] = I.X[i*Width : (i+1)*Width]
 	}
 	return others.ByName["c"].X[0], set.ByName["g"].X, outputs
 }
 
 // LearnG learns g
-func LearnG(inputs Matrix[float64], width, iterations int) (float64, []float64, [][]float64) {
+func LearnG(inputs Matrix[float64], iterations int) (float64, []float64, [][]float64) {
 	const Eta = 1e-3
 	rng := rand.New(rand.NewSource(1))
 	others := tf64.NewSet()
@@ -251,7 +256,7 @@ func LearnG(inputs Matrix[float64], width, iterations int) (float64, []float64, 
 	others.ByName["c"].X = append(others.ByName["c"].X, V)
 
 	set := tf64.NewSet()
-	set.Add("i", width, inputs.Rows)
+	set.Add("i", Width, inputs.Rows)
 	set.Add("g", inputs.Cols, inputs.Rows)
 	//set.Add("l", 1, 1)
 
@@ -355,9 +360,9 @@ func LearnG(inputs Matrix[float64], width, iterations int) (float64, []float64, 
 		y := set.ByName["i"]
 		vectors := make([][]float64, len(cp))
 		for i := range vectors {
-			row := make([]float64, width)
+			row := make([]float64, Width)
 			for ii := range row {
-				row[ii] = y.X[i*width+ii]
+				row[ii] = y.X[i*Width+ii]
 			}
 			vectors[i] = row
 		}
@@ -388,7 +393,7 @@ func LearnG(inputs Matrix[float64], width, iterations int) (float64, []float64, 
 	}
 	I := set.ByName["i"]
 	for i := range cp {
-		cp[i].Embedding = I.X[i*width : (i+1)*width]
+		cp[i].Embedding = I.X[i*Width : (i+1)*Width]
 	}
 	sort.Slice(cp, func(i, j int) bool {
 		return cp[i].Cluster < cp[j].Cluster
@@ -396,7 +401,7 @@ func LearnG(inputs Matrix[float64], width, iterations int) (float64, []float64, 
 	I := set.ByName["i"]
 	outputs := make([][]float64, inputs.Rows)
 	for i := range outputs {
-		outputs[i] = I.X[i*width : (i+1)*width]
+		outputs[i] = I.X[i*Width : (i+1)*Width]
 	}
 	return others.ByName["c"].X[0], set.ByName["g"].X, outputs
 }
@@ -410,7 +415,7 @@ type G struct {
 }
 
 // NewG creates a new g model
-func NewG(rows, cols, width int) G {
+func NewG(rows, cols int) G {
 	rng := rand.New(rand.NewSource(1))
 
 	others := tf64.NewSet()
@@ -419,7 +424,7 @@ func NewG(rows, cols, width int) G {
 	x.X = x.X[:cap(x.X)]
 
 	set := tf64.NewSet()
-	set.Add("i", width, rows)
+	set.Add("i", Width, rows)
 	set.Add("g", cols, rows)
 	//set.Add("l", 1, 1)
 
@@ -454,7 +459,7 @@ func NewG(rows, cols, width int) G {
 }
 
 // Iterate iterates the g model
-func (g *G) Iterate(inputs Matrix[float64], width, iterations int) (float64, []float64, [][]float64) {
+func (g *G) Iterate(inputs Matrix[float64], iterations int) (float64, []float64, [][]float64) {
 	x, index := g.Others.ByName["x"], 0
 	for row := range inputs.Rows {
 		for _, value := range inputs.Data[row*inputs.Cols : row*inputs.Cols+inputs.Cols] {
@@ -539,9 +544,9 @@ func (g *G) Iterate(inputs Matrix[float64], width, iterations int) (float64, []f
 		y := set.ByName["i"]
 		vectors := make([][]float64, len(cp))
 		for i := range vectors {
-			row := make([]float64, width)
+			row := make([]float64, Width)
 			for ii := range row {
-				row[ii] = y.X[i*width+ii]
+				row[ii] = y.X[i*Width+ii]
 			}
 			vectors[i] = row
 		}
@@ -572,7 +577,7 @@ func (g *G) Iterate(inputs Matrix[float64], width, iterations int) (float64, []f
 	}
 	I := set.ByName["i"]
 	for i := range cp {
-		cp[i].Embedding = I.X[i*width : (i+1)*width]
+		cp[i].Embedding = I.X[i*Width : (i+1)*Width]
 	}
 	sort.Slice(cp, func(i, j int) bool {
 		return cp[i].Cluster < cp[j].Cluster
@@ -580,7 +585,7 @@ func (g *G) Iterate(inputs Matrix[float64], width, iterations int) (float64, []f
 	I := g.Set.ByName["i"]
 	outputs := make([][]float64, inputs.Rows)
 	for i := range outputs {
-		outputs[i] = I.X[i*width : (i+1)*width]
+		outputs[i] = I.X[i*Width : (i+1)*Width]
 	}
 	return V, g.Set.ByName["g"].X, outputs
 }
@@ -593,9 +598,9 @@ var (
 )
 
 // SMode s mode
-func SMode(epochs int, iterate func(inputs Matrix[float64], width, iterations int) (float64, []float64, [][]float64)) {
+func SMode(epochs int, iterate func(inputs Matrix[float64], iterations int) (float64, []float64, [][]float64)) {
 	rng := rand.New(rand.NewSource(1))
-	g := NewMatrix[float64](3, 33)
+	g := NewMatrix[float64](Width, 33)
 	for range g.Rows {
 		for range g.Cols {
 			g.Data = append(g.Data, rng.Float64())
@@ -644,7 +649,7 @@ func SMode(epochs int, iterate func(inputs Matrix[float64], width, iterations in
 	var chist plotter.Values
 	for epoch := range epochs {
 		fmt.Println(epoch)
-		l, G, outputs := iterate(gadj, 3, 512)
+		l, G, outputs := iterate(gadj, 512)
 		for i := range outputs {
 			type R struct {
 				R float64
@@ -890,7 +895,7 @@ func main() {
 		return
 	}
 
-	g := NewG(33, 33, 3)
+	g := NewG(33, 33)
 	SMode(*FlagEpochs*1024, g.Iterate)
 
 	runtime.GC()
